@@ -1,0 +1,68 @@
+################################################################################################################
+
+# Crear imagen
+
+docker build -t wsn-taller-4-canv-img:parte1 .
+
+################################################################################################################
+
+# Levantar contenedor 
+
+docker run -it \
+  --name wsn_cont_canv_ubu_t4 \
+  --hostname host_taller4_canv \
+  --network host \
+  --cap-add=NET_ADMIN \
+  -e DISPLAY=$DISPLAY \
+  -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
+  -v "$HOME/Documentos/WSN/Taller_4_CAN_Virtual/pcaps:/root/capturas:rw" \
+  wsn-taller-4-canv-img:parte1
+
+			🔍 Desglose rápido:
+			-it → modo interactivo con terminal (para que puedas usar bash dentro).
+			--name wsn_cont_canv_ubu_t4 → nombre fijo del contenedor (puedes reusarlo luego).
+			--network host → comparte la red y permite crear vcan0 visible globalmente.
+			--cap-add=NET_ADMIN → le da permisos para manipular interfaces CAN.
+			-e DISPLAY=$DISPLAY → envía tu variable de display al contenedor.
+			-v /tmp/.X11-unix:/tmp/.X11-unix:rw → monta el socket X11 (para mostrar ventanas GUI).
+			wsn-taller-4-canv-img:parte1 → la imagen que construiste.
+
+################################################################################################################
+
+# Reabrir contenedor
+
+docker start -ai wsn_cont_canv_ubu_t4  
+
+# Nuevas terminales
+
+docker exec -it wsn_cont_canv_ubu_t4 bash
+
+
+################################################################################################################
+
+
+# Levantar contenedor 
+
+docker run -it --rm \
+  --name wsn_cont_canF_ubu_t4 \
+  --hostname host_taller4_canv \
+  --network host \
+  --cap-add=NET_ADMIN \
+  --cap-add=NET_RAW \
+  -e DISPLAY=$DISPLAY \
+  -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
+  -v "$HOME/Documentos/WSN/Taller_4_CAN_Fisico/pcaps:/root/capturas:rw" \
+  wsn-taller-4-canv-img:parte1
+
+  
+################################################################################################################
+
+# Reabrir contenedor
+
+docker start -ai wsn_cont_canF_ubu_t4  
+
+# Nuevas terminales
+
+docker exec -it wsn_cont_canF_ubu_t4 bash
+ 
+ 

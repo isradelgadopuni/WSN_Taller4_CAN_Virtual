@@ -1,0 +1,231 @@
+# PARTE 1
+
+Paso 1 - SocketCAN: Instalar SocketCAN 
+	
+	Logrado con el Dockerfile
+
+Paso 2 — Virtual CAN driver (vcan):
+
+	# 1️⃣  Cargar el módulo del kernel para interfaces CAN virtuales (solo este en el host)
+	sudo modprobe vcan
+
+	# 2️⃣  Crear la interfaz virtual llamada vcan0
+	ip link add dev vcan0 type vcan
+
+	# 3️⃣  Activarla (pasar de DOWN a UP)
+	ip link set up vcan0
+
+	# 4️⃣  Verificar que exista y esté activa
+	ip link show vcan0
+
+Paso 3 - Revisión de las herramientas de SocketCAN:
+
+	a) La herramienta que genera tráfico es cangen, y la que monitorea tráfico es candump.
+
+	b) candump muestra y registra todas las tramas completas del bus, mientras que cansniffer organiza las tramas por ID y resalta las diferencias en los datos, facilitando la interpretación de cambios en tiempo real.
+	
+Paso 4 - Generar tramas CAN aleatorias y monitorearlas:
+ip
+	En una terminal:
+
+	candump vcan0
+
+	En otra terminal:
+	
+	cangen vcan0
+	
+	Cómo leer cada línea de candump
+
+	Ejemplo típico:
+
+	(0123.456789)  vcan0  123   [8]  11 22 33 44 55 66 77 88
+
+
+	(0123.456789) → timestamp (segundos.micros) de captura. Solo aparece si activas timestamp; si no, se omite.
+
+	vcan0 → interfaz CAN por la que se recibió la trama (tu bus virtual).
+
+	123 → ID de la trama en hexadecimal.
+
+	11 bits (0x000–0x7FF) = trama estándar.
+
+	Si fuera extendida (29 bits), verías un ID > 0x7FF o un indicador según el formato usado.
+
+	[8] → DLC (Data Length Code): número de bytes de datos (0–8 en CAN clásico).
+
+	11 22 33 44 55 66 77 88 → payload en hex: son los bytes crudos tal como viajaron en el bus (sin interpretación).
+
+	Cada par hex representa 1 byte (0x00–0xFF).
+
+	El significado (enteros, flags, ASCII, escalas) depende del protocolo/DBC.
+
+	Variantes y banderas que puedes encontrar
+
+	RTR (Remote Transmission Request): trama de petición sin datos útiles; el DLC indica cuántos bytes espera, pero el payload va vacío.
+
+	Estándar vs extendida: 11 bits vs 29 bits (extendida puede mostrarse con un flag/indicador según la versión de candump).
+
+	Errores: si hubiera frames de error, candump puede marcarlos como tales (no es lo habitual en vcan salvo que los fuerces).
+
+	¿Qué significan “los valores hexadecimales”?
+
+	Son datos brutos. Por ejemplo, si envías la cadena ASCII “holamundo”, el payload típico sería:
+	68 6F 6C 61 6D 75 6E 64 6F
+	(porque ‘h’=0x68, ‘o’=0x6F, etc.).
+
+	Si el mensaje codifica sensores (velocidad, rpm, etc.), esos bytes pueden ser enteros, flags o campos bit a bit. Sin un DBC o especificación, candump solo te muestra los bytes crudos.
+
+	Qué deberías haber observado con cangen + candump
+
+	IDs cambiando (aleatorios por defecto).
+
+	DLC variando entre 0 y 8.
+
+	Payload variando en cada trama (bytes hex distintos).
+
+	Timestamps incrementándose conforme llegan las tramas.
+
+Paso 5 — Guardar tramas en un archivo .log:
+
+	# Terminal A — Registrar el tráfico en un .log
+	
+	candump -l vcan0
+	
+	# Terminal B — Generar tráfico mientras registras
+
+	cangen vcan0
+	
+Paso 6 - Reproducir las tramas guardadas en el archivo .log:
+
+	canplayer -I candump-YYYY-MM-DD_HH:MM:SS.log
+
+Paso 7 - Generar una trama CAN específica:
+
+	🧩 Conversión de “holamundo” a hexadecimal
+
+	Cada carácter ASCII tiene un valor hexadecimal:
+
+	Caracter	Hex
+	h	68
+	o	6F
+	l	6C
+	a	61
+	m	6D
+	u	75
+	n	6E
+	d	64
+	o	6F
+
+	CAN clásico permite máximo 8 bytes de datos, por lo que se enviarán los primeros 8:
+	68 6F 6C 61 6D 75 6E 64 (corresponde a “holamund”).
+
+	Terminal 1 – Monitorear el bus
+	
+	candump vcan0
+
+	Terminal 2 – Enviar la trama (completa)
+	
+	cansend vcan0 012#686F6C616D756E646F
+
+Paso 8 - Generar varias tramas CAN y organizar la salida por ID y datos cambiantes:
+
+	Terminal 1 — Monitor con cansniffer
+	
+	cansniffer vcan0
+	
+	Terminal 2 — Generar tráfico
+
+	cangen vcan0
+	
+	Usando cansniffer, se observó una visualización organizada de las tramas CAN agrupadas por ID. Los campos de datos que varían entre tramas se destacan en tiempo real, lo que facilita identificar qué bytes cambian y analizar el comportamiento del bus.
+	
+	
+Paso 9 - Trama standard y extendida. Captura con Wireshark para mostrar los cambios. 
+
+	Terminal 1 — Capturar en .pcap
+
+	Ejecuta dentro del contenedor:
+
+	umask 0002 && tshark -i vcan0 -w - > /root/capturas/captura_can_bus.pcap
+	
+	Terminal 2 — Generar tráfico CAN
+
+	En otra terminal dentro del mismo contenedor, genera tramas:
+
+	# Standard	
+	
+	cangen vcan0 -g 10 -I 123 -L 8
+	
+	# Trama extendida
+	
+	cansend vcan0 1ABCDEEF#1122334455667788
+
+
+	🧠 Conceptos clave
+	Tipo de trama	Identificador	Longitud del ID	Campo “IDE”	Uso típico
+	Estándar	0x000 – 0x7FF	11 bits	0 (dominante)	CAN 2.0A, automotriz clásico
+	Extendida	0x00000000 – 0x1FFFFFFF	29 bits	1 (recesivo)	CAN 2.0B, mensajes con mayor segmentación
+	🧩 Diferencias estructurales visibles en Wireshark
+
+	Abre el archivo captura_can_bus.pcap en Wireshark y compara las tramas con ID 0x123 y 0x1ABCDEEF:
+
+	Campo	Trama estándar (0x123)	Trama extendida (0x1ABCDEEF)
+	Identifier	11-bit (0x123)	29-bit (0x1ABCDEEF)
+	IDE flag	0 (Standard frame)	1 (Extended frame)
+	RTR	0 = Data frame	0 = Data frame (igual)
+	DLC	8	8
+	Data bytes	8 bytes hex	8 bytes hex (mismo formato)
+
+	En la columna de “CAN Frame” Wireshark mostrará algo como:
+
+	Frame ID: 0x123 (Standard)
+	Frame ID: 0x1ABCDEEF (Extended)
+	IDE: Standard/Extended frame format flag
+
+
+	El único cambio estructural es el campo “IDE” (Identifier Extension Bit) dentro del “Arbitration Field”,
+	que indica si el ID ocupa 11 bits o 29 bits.
+	Los campos SOF, RTR, DLC, Data, CRC se mantienen iguales en su función.
+
+	🧩 Conclusión para tu informe
+
+	Se generaron y analizaron tramas estándar (ID 0x123, 11 bits) y extendidas (ID 0x1ABCDEEF, 29 bits).
+	En Wireshark se observó que ambas comparten la misma estructura general, diferenciándose únicamente en el campo IDE, que cambia de 0 a 1 para indicar formato extendido, y en la longitud del identificador (de 11 a 29 bits).
+	Los campos de control (RTR, DLC) y los datos permanecen inalterados.
+
+Paso 10 - Tramas Remote Transmission Request (RTR):
+
+	Terminal 1 – Monitorear
+	
+	umask 0002 && tshark -i vcan0 -w - > /root/capturas/captura_rtr.pcap
+
+	Terminal 2 – Enviar una RTR frame
+
+	CAN RTR se envía con r (minúscula) después del ID:
+
+	cansend vcan0 123#R
+
+	Puedes indicar el número de bytes esperados en la respuesta (DLC) así:
+
+	cansend vcan0 123#R8
+	
+	🧠 Qué observarás en Wireshark
+
+	Abre la captura: Wireshark mostrará algo similar a:
+
+	Frame ID: 0x123 (Standard frame)
+	RTR: Remote request frame
+	DLC: 8
+	Data: <none>
+
+
+	🔹 El campo RTR cambia de 0 a 1.
+	🔹 El campo Data no contiene bytes.
+	🔹 El valor DLC se mantiene (indica cuántos bytes espera recibir, no cuántos contiene).
+
+	✅ Conclusión para tu informe
+
+	Se generó una trama CAN de tipo Remote Transmission Request (RTR) con ID 0x123.
+	En Wireshark se observa que el bit RTR cambia a 1, lo que indica una petición de datos.
+	El campo DLC indica el tamaño esperado del payload, pero el campo Data permanece vacío.
+	Por ello, el “tamaño del payload” aparente varía: las tramas RTR no transportan datos, solo solicitan una respuesta del nodo correspondiente.
